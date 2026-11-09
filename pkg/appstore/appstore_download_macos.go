@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/blacktop/go-macho/pkg/xar"
-	"github.com/schollz/progressbar/v3"
 )
 
 const (
@@ -31,7 +30,7 @@ func (t *appstore) downloadMacPackage(
 	item downloadItemResult,
 	destination string,
 	hardwareID []byte,
-	progress *progressbar.ProgressBar,
+	progress Progress,
 ) (_ DownloadOutput, err error) {
 	dpInfo, err := macDPInfo(item.Sinfs)
 	if err != nil {
@@ -61,6 +60,8 @@ func (t *appstore) downloadMacPackage(
 	if err := t.downloadFile(ctx, item.URL, encryptedPath, progress); err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
+
+	reportPhase(progress, PhaseDecrypting)
 
 	factory := t.macDecrypterFactory
 	if factory == nil {

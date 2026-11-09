@@ -68,6 +68,20 @@ Use "ipatool [command] --help" for more information about a command.
 **Note:** the tool runs in interactive mode by default. Use the `--non-interactive` flag
 if running in an automated environment.
 
+### Download progress
+
+`ipatool download` reports progress according to the `--progress` flag or the `IPATOOL_PROGRESS` environment variable:
+
+| Mode | Output |
+| --- | --- |
+| `auto` (default) | `none` with `--format json`, `bar` in an interactive terminal, otherwise `plain` |
+| `bar` | Progress bar on stdout |
+| `json` | JSON lines on stderr at most four times per second, such as `{"level":"info","event":"progress","phase":"downloading","bytes":1048576,"total":52428800,"time":"..."}` |
+| `plain` | One line per phase on stderr (`resolving`, `purchasing`, `downloading`, `decrypting`, `patching`), plus the downloaded size at most every 15 seconds and every 10% |
+| `none` | No progress output |
+
+Coding agents and other tools that capture terminal output should use `--non-interactive --progress plain`, which keeps the output short and free of control characters.
+
 ### MCP tools
 
 Run `ipatool auth login` in a terminal, then configure your MCP client to launch the stdio server:

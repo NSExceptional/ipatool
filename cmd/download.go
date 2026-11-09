@@ -7,8 +7,8 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/majd/ipatool/v2/pkg/appstore"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // nolint:wrapcheck
@@ -25,6 +25,7 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 		bundleID          string
 		externalVersionID string
 		platformValue     string
+		progressValue     string
 	)
 
 	cmd := &cobra.Command{
@@ -40,6 +41,31 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 				return err
 			}
 
+			format := OutputFormatText
+			if flag := cmd.Flag("format"); flag != nil {
+				if format, err = OutputFormatFromString(flag.Value.String()); err != nil {
+					return err
+				}
+			}
+
+			interactive, _ := cmd.Context().Value(interactiveKey).(bool)
+
+			progressMode, err := resolveProgressMode(progressValue, cmd.Flags().Changed("progress"), os.Getenv(progressEnvironmentVariable), progressEnvironment{
+				format:           format,
+				interactive:      interactive,
+				stdoutIsTerminal: term.IsTerminal(int(os.Stdout.Fd())),
+			})
+			if err != nil {
+				return err
+			}
+
+			progress := newProgress(progressMode, cmd.OutOrStdout(), cmd.ErrOrStderr(), time.Now)
+			reportPhase := func(phase appstore.Phase) {
+				if progress != nil {
+					progress.Phase(phase)
+				}
+			}
+
 			store := appStore()
 			infoResult, err := store.AccountInfo()
 			if err != nil {
@@ -52,6 +78,8 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 			purchased := false
 
 			return retry.Do(func() error {
+				reportPhase(appstore.PhaseResolving)
+
 				if errors.Is(lastErr, appstore.ErrPasswordTokenExpired) {
 					loginResult, err := store.Login(appstore.LoginInput{
 						Email:    acc.Email,
@@ -87,6 +115,8 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 				}
 
 				if purchaseRequired {
+					reportPhase(appstore.PhasePurchasing)
+
 					err := store.Purchase(appstore.PurchaseInput{
 						Account:  acc,
 						App:      app,
@@ -100,25 +130,6 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 					dependencies.Logger.Verbose().
 						Bool("success", true).
 						Msg("purchase")
-				}
-
-				interactive, _ := cmd.Context().Value(interactiveKey).(bool)
-				var progress *progressbar.ProgressBar
-				if interactive {
-					progress = progressbar.NewOptions64(1,
-						progressbar.OptionSetDescription("downloading"),
-						progressbar.OptionSetWriter(os.Stdout),
-						progressbar.OptionShowBytes(true),
-						progressbar.OptionSetWidth(20),
-						progressbar.OptionFullWidth(),
-						progressbar.OptionThrottle(65*time.Millisecond),
-						progressbar.OptionShowCount(),
-						progressbar.OptionClearOnFinish(),
-						progressbar.OptionSpinnerType(14),
-						progressbar.OptionSetRenderBlankState(true),
-						progressbar.OptionSetElapsedTime(false),
-						progressbar.OptionSetPredictTime(false),
-					)
 				}
 
 				out, err := store.Download(appstore.DownloadInput{
@@ -173,6 +184,7 @@ func downloadCmdWithAppStore(appStore func() appstore.AppStore) *cobra.Command {
 	cmd.Flags().StringVar(&externalVersionID, "external-version-id", "", "External version identifier of the target app (defaults to latest version when not specified)")
 	cmd.Flags().StringVar(&platformValue, "platform", "", "Platform to download for: iphone (iOS), ipad (iPadOS), appletv (tvOS), watchos, visionos, or macos")
 	cmd.Flags().BoolVar(&acquireLicense, "purchase", false, "Obtain a license for the app if needed")
+	cmd.Flags().StringVar(&progressValue, "progress", string(ProgressModeAuto), "Progress output: auto, bar, json, plain, or none (also settable with "+progressEnvironmentVariable+")")
 
 	return cmd
 }

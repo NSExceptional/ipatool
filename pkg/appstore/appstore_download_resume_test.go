@@ -10,8 +10,20 @@ import (
 	"testing"
 
 	"github.com/majd/ipatool/v2/pkg/util/operatingsystem"
-	"github.com/schollz/progressbar/v3"
 )
+
+type recordedProgress struct {
+	phases []Phase
+	bytes  [][2]int64
+}
+
+func (p *recordedProgress) Phase(phase Phase) {
+	p.phases = append(p.phases, phase)
+}
+
+func (p *recordedProgress) Bytes(current, total int64) {
+	p.bytes = append(p.bytes, [2]int64{current, total})
+}
 
 func TestDownloadFileResumesWithAndWithoutProgress(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +37,8 @@ func TestDownloadFileResumesWithAndWithoutProgress(t *testing.T) {
 	}))
 	defer server.Close()
 
-	for _, interactive := range []bool{false, true} {
-		t.Run(map[bool]string{false: "non-interactive", true: "interactive"}[interactive], func(t *testing.T) {
+	for _, withProgress := range []bool{false, true} {
+		t.Run(map[bool]string{false: "without progress", true: "with progress"}[withProgress], func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "app.tmp")
 			if err := os.WriteFile(path, []byte("partial"), 0600); err != nil {
 				t.Fatal(err)
@@ -34,9 +46,11 @@ func TestDownloadFileResumesWithAndWithoutProgress(t *testing.T) {
 
 			store := &appstore{httpClient: newDownloadTestClient(), os: operatingsystem.New()}
 
-			var progress *progressbar.ProgressBar
-			if interactive {
-				progress = progressbar.NewOptions64(15, progressbar.OptionSetWriter(io.Discard))
+			var progress Progress
+
+			recorded := &recordedProgress{}
+			if withProgress {
+				progress = recorded
 			}
 
 			if err := store.downloadFile(context.Background(), server.URL, path, progress); err != nil {
@@ -51,7 +65,39 @@ func TestDownloadFileResumesWithAndWithoutProgress(t *testing.T) {
 			if string(data) != "partialdownload" {
 				t.Fatalf("download = %q", data)
 			}
+
+			if !withProgress {
+				return
+			}
+
+			if len(recorded.bytes) < 2 || recorded.bytes[0] != [2]int64{7, 15} || recorded.bytes[len(recorded.bytes)-1] != [2]int64{15, 15} {
+				t.Fatalf("progress = %v", recorded.bytes)
+			}
 		})
+	}
+}
+
+func TestDownloadFileReportsCompletedDownload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Range", "bytes */7")
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+	}))
+	defer server.Close()
+
+	path := filepath.Join(t.TempDir(), "app.tmp")
+	if err := os.WriteFile(path, []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &appstore{httpClient: newDownloadTestClient(), os: operatingsystem.New()}
+	recorded := &recordedProgress{}
+
+	if err := store.downloadFile(context.Background(), server.URL, path, recorded); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(recorded.bytes) != 1 || recorded.bytes[0] != [2]int64{7, 7} {
+		t.Fatalf("progress = %v", recorded.bytes)
 	}
 }
 
@@ -106,9 +152,9 @@ func TestDownloadFileValidatesResumeResponses(t *testing.T) {
 
 				store := &appstore{httpClient: newDownloadTestClient(), os: operatingsystem.New()}
 
-				var progress *progressbar.ProgressBar
+				var progress Progress
 				if interactive {
-					progress = progressbar.NewOptions64(1, progressbar.OptionSetWriter(io.Discard))
+					progress = &recordedProgress{}
 				}
 
 				err := store.downloadFile(context.Background(), server.URL, path, progress)

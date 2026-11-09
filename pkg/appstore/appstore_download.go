@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/schollz/progressbar/v3"
 	"howett.net/plist"
 )
 
@@ -25,7 +24,7 @@ type DownloadInput struct {
 	Account           Account
 	App               App
 	OutputPath        string
-	Progress          *progressbar.ProgressBar
+	Progress          Progress
 	ExternalVersionID string
 	Platform          Platform
 }
@@ -36,6 +35,8 @@ type DownloadOutput struct {
 }
 
 func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
+	reportPhase(input.Progress, PhaseResolving)
+
 	macAddr, err := t.machine.MacAddress()
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to get mac address: %w", err)
@@ -110,6 +111,8 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to resolve destination path: %w", err)
 	}
 
+	reportPhase(input.Progress, PhaseDownloading)
+
 	if packagePlatform == PlatformMacOS {
 		return t.downloadMacPackage(input.Context, item, destination, machineGUID, input.Progress)
 	}
@@ -119,6 +122,8 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	if err := t.downloadFile(input.Context, item.URL, tmpPath, input.Progress); err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
+
+	reportPhase(input.Progress, PhasePatching)
 
 	if err := t.validatePackagePlatform(tmpPath, resolvedPlatform); err != nil {
 		if removeErr := t.os.Remove(tmpPath); removeErr != nil {
@@ -239,7 +244,7 @@ type downloadResult struct {
 }
 
 //nolint:nonamedreturns // Deferred close errors must propagate to callers.
-func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *progressbar.ProgressBar) (err error) {
+func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress Progress) (err error) {
 	req, err := t.httpClient.NewRequest("GET", src, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -285,6 +290,10 @@ func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *
 	}
 
 	if complete {
+		if progress != nil {
+			progress.Bytes(offset, total)
+		}
+
 		return nil
 	}
 
@@ -301,13 +310,8 @@ func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *
 	var writer io.Writer = file
 
 	if progress != nil {
-		progress.ChangeMax64(total)
-
-		if err := progress.Set64(offset); err != nil {
-			return fmt.Errorf("can not set bar progress: %w", err)
-		}
-
-		writer = io.MultiWriter(file, progress)
+		progress.Bytes(offset, total)
+		writer = io.MultiWriter(file, &progressWriter{progress: progress, current: offset, total: total})
 	}
 
 	var body io.Reader = res.Body
