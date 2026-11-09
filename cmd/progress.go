@@ -23,9 +23,10 @@ const (
 )
 
 const (
-	jsonProgressInterval     = 250 * time.Millisecond
-	plainProgressHeartbeat   = 15 * time.Second
-	plainProgressMinInterval = time.Second
+	jsonProgressInterval   = 250 * time.Millisecond
+	plainProgressHeartbeat = 15 * time.Second
+	// Downloads lasting at least 3 seconds report every percent.
+	plainProgressMinInterval = 3 * time.Second / 100
 	plainProgressPercentStep = 1
 )
 

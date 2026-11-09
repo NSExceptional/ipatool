@@ -72,10 +72,10 @@ var _ = Describe("Progress", func() {
 			progress.Bytes(0, 300_000_000)
 
 			// Advanced, but within the minimum interval.
-			clock.Advance(500 * time.Millisecond)
+			clock.Advance(10 * time.Millisecond)
 			progress.Bytes(15_000_000, 300_000_000)
 
-			clock.Advance(500 * time.Millisecond)
+			clock.Advance(20 * time.Millisecond)
 			progress.Bytes(15_000_000, 300_000_000)
 
 			// Less than a percent since the last line.
