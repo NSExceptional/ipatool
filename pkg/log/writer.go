@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/term"
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=writer.go -destination=writer_mock.go -package log
@@ -21,9 +22,14 @@ type writer struct {
 
 func NewWriter() Writer {
 	return &writer{
-		stdOutWriter: zerolog.ConsoleWriter{Out: os.Stdout},
-		stdErrWriter: zerolog.ConsoleWriter{Out: os.Stderr},
+		stdOutWriter: zerolog.ConsoleWriter{Out: os.Stdout, NoColor: !colorEnabled(os.Stdout)},
+		stdErrWriter: zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !colorEnabled(os.Stderr)},
 	}
+}
+
+// colorEnabled honors NO_COLOR (https://no-color.org) and disables color when the output is not a terminal.
+func colorEnabled(file *os.File) bool {
+	return os.Getenv("NO_COLOR") == "" && term.IsTerminal(int(file.Fd()))
 }
 
 func (l *writer) Write(p []byte) (int, error) {

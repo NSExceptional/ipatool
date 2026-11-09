@@ -1,6 +1,8 @@
 package log
 
 import (
+	"os"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rs/zerolog"
@@ -68,6 +70,17 @@ var _ = Describe("Writer", func() {
 			length, err := sut.WriteLevel(zerolog.PanicLevel, []byte("panic"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(length).To(Equal(5))
+		})
+	})
+
+	When("output is not a terminal", func() {
+		It("disables color", func() {
+			reader, writer, err := os.Pipe()
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(reader.Close)
+			DeferCleanup(writer.Close)
+
+			Expect(colorEnabled(writer)).To(BeFalse())
 		})
 	})
 })
