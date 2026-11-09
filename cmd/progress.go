@@ -23,9 +23,10 @@ const (
 )
 
 const (
-	jsonProgressInterval         = 250 * time.Millisecond
-	plainProgressInterval        = 15 * time.Second
-	plainProgressPercentInterval = 10
+	jsonProgressInterval     = 250 * time.Millisecond
+	plainProgressHeartbeat   = 15 * time.Second
+	plainProgressMinInterval = time.Second
+	plainProgressPercentStep = 1
 )
 
 type progressEnvironment struct {
@@ -145,7 +146,7 @@ func (p *jsonProgress) Bytes(current, total int64) {
 	event.Send()
 }
 
-// plainProgress prints one line per phase plus sparse byte counts, so captured output stays short.
+// plainProgress prints one line per phase, then byte counts per percent and as a heartbeat while stalled.
 type plainProgress struct {
 	out         io.Writer
 	now         func() time.Time
@@ -173,11 +174,10 @@ func (p *plainProgress) Bytes(current, total int64) {
 	}
 
 	if !p.lastEmit.IsZero() {
-		if now.Sub(p.lastEmit) < plainProgressInterval {
-			return
-		}
+		elapsed := now.Sub(p.lastEmit)
+		advanced := total > 0 && percent-p.lastPercent >= plainProgressPercentStep
 
-		if total > 0 && percent-p.lastPercent < plainProgressPercentInterval {
+		if elapsed < plainProgressHeartbeat && (!advanced || elapsed < plainProgressMinInterval) {
 			return
 		}
 	}

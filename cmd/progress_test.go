@@ -65,20 +65,29 @@ var _ = Describe("Progress", func() {
 			progress = newProgress(ProgressModePlain, nil, out, clock.Now)
 		})
 
-		It("prints phases once and throttles byte counts", func() {
+		It("prints phases once and byte counts per percent or heartbeat", func() {
 			progress.Phase(appstore.PhaseResolving)
 			progress.Phase(appstore.PhaseResolving)
 			progress.Phase(appstore.PhaseDownloading)
 			progress.Bytes(0, 300_000_000)
 
+			// Advanced, but within the minimum interval.
+			clock.Advance(500 * time.Millisecond)
+			progress.Bytes(15_000_000, 300_000_000)
+
+			clock.Advance(500 * time.Millisecond)
+			progress.Bytes(15_000_000, 300_000_000)
+
+			// Less than a percent since the last line.
 			clock.Advance(time.Second)
-			progress.Bytes(150_000_000, 300_000_000)
+			progress.Bytes(16_500_000, 300_000_000)
 
-			clock.Advance(15 * time.Second)
-			progress.Bytes(150_000_000, 300_000_000)
+			// Heartbeat while stalled at the same percent.
+			clock.Advance(14 * time.Second)
+			progress.Bytes(16_500_000, 300_000_000)
 
-			clock.Advance(15 * time.Second)
-			progress.Bytes(160_000_000, 300_000_000)
+			clock.Advance(time.Second)
+			progress.Bytes(18_000_000, 300_000_000)
 
 			progress.Phase(appstore.PhasePatching)
 
@@ -86,7 +95,9 @@ var _ = Describe("Progress", func() {
 				"resolving",
 				"downloading",
 				"downloading 0% (0 B / 300.0 MB)",
-				"downloading 50% (150.0 MB / 300.0 MB)",
+				"downloading 5% (15.0 MB / 300.0 MB)",
+				"downloading 5% (16.5 MB / 300.0 MB)",
+				"downloading 6% (18.0 MB / 300.0 MB)",
 				"patching",
 				"",
 			}, "\n")))

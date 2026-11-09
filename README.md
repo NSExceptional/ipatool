@@ -77,7 +77,7 @@ if running in an automated environment.
 | `auto` (default) | `none` with `--format json`, `bar` in an interactive terminal, otherwise `plain` |
 | `bar` | Progress bar on stdout |
 | `json` | JSON lines on stderr at most four times per second, such as `{"level":"info","event":"progress","phase":"downloading","bytes":1048576,"total":52428800,"time":"..."}` |
-| `plain` | One line per phase on stderr (`resolving`, `purchasing`, `downloading`, `decrypting`, `patching`), plus the downloaded size at most every 15 seconds and every 10% |
+| `plain` | One line per phase on stderr (`resolving`, `purchasing`, `downloading`, `decrypting`, `patching`), plus the downloaded size every 1% (at most once per second) and at least every 15 seconds |
 | `none` | No progress output |
 
 Coding agents and other tools that capture terminal output should use `--non-interactive --progress plain`, which keeps the output short and free of control characters.
